@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Scan to open in Expo Go</title>
+  <style>
+    body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #0A0A0A; color: white; }
+    h1 { margin-bottom: 8px; }
+    p { color: #aaa; margin-bottom: 24px; }
+    #qr { background: white; padding: 16px; border-radius: 8px; }
+    code { background: #1a1a1a; padding: 8px 16px; border-radius: 4px; font-size: 14px; color: #3B82F6; }
+  </style>
+</head>
+<body>
+  <h1>Pimp App — Expo Go</h1>
+  <p>Scan with your iPhone Camera app (not Expo Go)</p>
+  <div id="qr"></div>
+  <br>
+  <code>exp://ye1lwqk-anonymous-8081.exp.direct</code>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    new QRCode(document.getElementById("qr"), {
+      text: "exp://ye1lwqk-anonymous-8081.exp.direct",
+      width: 256,
+      height: 256,
+      colorDark: "#000000",
+      colorLight: "#ffffff",
+    });
+  </script>
+</body>
+</html>

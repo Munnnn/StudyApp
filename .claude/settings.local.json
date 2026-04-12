@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(npx --version)",
+      "Bash(docker-compose exec:*)",
+      "Bash(break)",
+      "Bash(uvicorn app.main:app --host 0.0.0.0 --port 8000)",
+      "Bash(curl -s -X POST http://localhost:8000/api/v1/users/ensure -H \"X-Device-Id: seed-demo-device-0000\")",
+      "Bash(curl -s http://localhost:8000/api/v1/study/next -H \"X-Device-Id: seed-demo-device-0000\")",
+      "Bash(awk '{print $1}')",
+      "Bash(npm install:*)",
+      "Bash(curl:*)",
+      "Bash(uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload)",
+      "Bash(npx expo:*)",
+      "Bash(jobs -l)",
+      "Bash(ip addr:*)",
+      "Bash(awk '{print $2}')",
+      "Bash(pkill -f \"expo start\")",
+      "Bash(kill -9 20568)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(xargs kill:*)",
+      "Bash(lsof -ti:8081)",
+      "Bash(fuser 8081/tcp)",
+      "Bash(echo \"PID=$!\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(t['public_url']\\) for t in d.get\\('tunnels',[]\\)]\")",
+      "Bash(qrencode -t ANSIUTF8 \"exp://7ofdrrm-anonymous-8081.exp.direct\")",
+      "Bash(npx qrcode-terminal:*)",
+      "Bash(fuser -k 8081/tcp)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('packagerOpts',{}\\)\\)\")",
+      "Bash(grep -v '^$')",
+      "Bash(python3 -c ':*)",
+      "Bash(nohup npx:*)",
+      "Bash(python3 -c \" import sys, json try: d = json.load\\(sys.stdin\\) for t in d.get\\('tunnels', []\\): print\\(t['public_url']\\) except: print\\('no tunnels yet'\\) \")",
+      "Bash(python3 -c \" import sys, json d = json.load\\(sys.stdin\\) for t in d.get\\('tunnels', []\\): print\\(t['public_url']\\) \")",
+      "Bash(npx localtunnel:*)",
+      "Bash(echo \"EXPO PID=$!\")",
+      "Bash(python3:*)",
+      "Bash(fuser -k 8000/tcp)",
+      "Bash(nohup uv:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "claude-flow"
+  ]
+}

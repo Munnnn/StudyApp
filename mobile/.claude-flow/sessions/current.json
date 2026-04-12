@@ -1,0 +1,12 @@
+{
+  "id": "session-1775968461220",
+  "startedAt": "2026-04-12T04:34:21.220Z",
+  "cwd": "/home/munc/pimp/mobile",
+  "context": {},
+  "metrics": {
+    "edits": 9,
+    "commands": 0,
+    "tasks": 0,
+    "errors": 0
+  }
+}
