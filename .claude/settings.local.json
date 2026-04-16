@@ -39,7 +39,19 @@
       "Bash(echo \"EXPO PID=$!\")",
       "Bash(python3:*)",
       "Bash(fuser -k 8000/tcp)",
-      "Bash(nohup uv:*)"
+      "Bash(nohup uv:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(docker compose:*)",
+      "Bash(psql --version)",
+      "Bash(pg_isready)",
+      "Bash(ipconfig getifaddr:*)",
+      "Bash(brew install:*)",
+      "Bash(brew services:*)",
+      "Bash(export PATH=\"/opt/homebrew/opt/postgresql@16/bin:$PATH\")",
+      "Bash(createuser pimp:*)",
+      "Bash(createdb pimp:*)",
+      "Bash(psql -c \"ALTER USER pimp PASSWORD 'pimp';\" pimp)",
+      "Bash(pip3 install:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

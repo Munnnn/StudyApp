@@ -1,244 +1,143 @@
-# Claude Code Configuration - RuFlo V3
+# CLAUDE.md
 
-## Behavioral Rules (Always Enforced)
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- Do what has been asked; nothing more, nothing less
-- NEVER create files unless they're absolutely necessary for achieving your goal
-- ALWAYS prefer editing an existing file to creating a new one
-- NEVER proactively create documentation files (*.md) or README files unless explicitly requested
-- NEVER save working files, text/mds, or tests to the root folder
-- Never continuously check status after spawning a swarm — wait for results
-- ALWAYS read a file before editing it
-- NEVER commit secrets, credentials, or .env files
+## What This Is
 
-## File Organization
+Pimp App — hospital-style micro-quizzing for USMLE Step 1 and clerkship prep. Two-phase study flow: free-recall (typed answer graded by AI) then MCQ recognition, with adaptive spaced repetition. Users upload flashcard decks via CSV; the AI generates attending-style teaching interactions from each card.
 
-- NEVER save to root folder — use the directories below
-- Use `/src` for source code files
-- Use `/tests` for test files
-- Use `/docs` for documentation and markdown files
-- Use `/config` for configuration files
-- Use `/scripts` for utility scripts
-- Use `/examples` for example code
+## Architecture
 
-## Project Architecture
+**Monorepo with two independent apps:**
 
-- Follow Domain-Driven Design with bounded contexts
-- Keep files under 500 lines
-- Use typed interfaces for all public APIs
-- Prefer TDD London School (mock-first) for new code
-- Use event sourcing for state changes
-- Ensure input validation at system boundaries
+- `backend/` — Python 3.11+ FastAPI + SQLAlchemy 2.0 (async) + Alembic migrations + PostgreSQL 16
+- `mobile/` — Expo SDK 54 (React Native 0.81) + Zustand + React Navigation 7
 
-### Project Config
+No shared code between them. The mobile app talks to the backend via REST (`X-Device-Id` header for user identity, no auth tokens).
 
-- **Topology**: hierarchical-mesh
-- **Max Agents**: 15
-- **Memory**: hybrid
-- **HNSW**: Enabled
-- **Neural**: Enabled
+### Backend Structure
 
-## Build & Test
+```
+backend/app/
+  main.py              → FastAPI app, CORS, mounts v1 router
+  config.py            → pydantic-settings (reads .env)
+  db.py                → async SQLAlchemy engine + session factory
+  deps.py              → get_current_user (auto-creates user from X-Device-Id header)
+  api/v1/              → route modules: users, decks, cards, study, dashboard
+  models/              → SQLAlchemy ORM: user, deck, card, generated_question, attempt, schedule_state
+  schemas/             → Pydantic request/response models
+  services/
+    scoring.py         → pure functions: compute_mastery, classify_gap (no I/O)
+    scheduling.py      → pure functions: adaptive interval calculation (no I/O)
+    generation.py      → orchestrates AI question generation for a card
+    grading.py         → orchestrates AI grading of typed answers
+    csv_import.py      → CSV/TSV deck import parser
+    ai/                → pluggable AI adapters
+      base.py          → AIService ABC (generate_teaching, grade_typed_answer)
+      factory.py       → get_ai_service() — returns adapter based on AI_PROVIDER env
+      anthropic_adapter.py, openai_adapter.py, fake.py
+```
+
+### Mobile Structure
+
+```
+mobile/src/
+  api/client.ts        → fetch wrapper, injects X-Device-Id from Zustand store
+  api/endpoints.ts     → typed wrappers for every API route
+  state/store.ts       → Zustand global store (deviceId, user, currentAttempt)
+  state/device.ts      → device ID persistence (expo-secure-store)
+  nav/index.tsx         → navigation tree (Root Stack → Bottom Tabs)
+  screens/             → one screen per study phase + deck management + dashboard + settings
+  components/          → Button, QuestionCard, MasteryBadge
+  theme.ts             → colors/fonts (dark theme)
+  notifications/       → local notification scheduling (expo-notifications)
+```
+
+### Navigation Flow (mobile)
+
+Root Stack → Onboarding (no user) or Main (has user) → Bottom Tabs: Study | Decks | Dashboard | Settings. Study tab has inner stack: FreeRecall → MCQ → Explanation (screen-replace, no back button).
+
+### Study Flow (critical invariant)
+
+Three-endpoint protocol enforced server-side to prevent answer leakage:
+
+1. `GET /api/v1/study/next` — returns attending_question only. **Never** includes `correct_answer` or `mcq_options`.
+2. `POST /api/v1/study/attempts/typed` — locks typed answer, AI grades it, then returns shuffled MCQ options.
+3. `POST /api/v1/study/attempts/mcq` — finalizes attempt, computes mastery, updates schedule, returns full explanation.
+
+MCQ option order is deterministic (sha256 of attempt_id as seed). Both client and server reconstruct the same shuffle.
+
+### AI Provider System
+
+Pluggable via `AI_PROVIDER` env var (`anthropic` | `openai` | `fake`). Factory pattern in `services/ai/factory.py`. The `fake` provider returns deterministic results for tests. `generate_teaching()` transforms a flashcard into a full teaching interaction; `grade_typed_answer()` scores free-recall 0-4.
+
+### Scoring & Scheduling (pure functions, no I/O)
+
+- `scoring.py`: mastery = (typed_score * 2) + (mcq_correct ? 2 : 0) + time_bonus. Thresholds: strong >= 10, developing >= 7, fragile >= 4, weak < 4.
+- `scheduling.py`: adaptive intervals — strong multiplies by 2.5x (3.5x after 3 consecutive), weak resets to 10min.
+- Recognition-only gap (typed wrong + MCQ correct) is tracked as a first-class metric.
+
+## Development Commands
+
+### Prerequisites
+
+Docker (for Postgres), Python 3.11+, Node.js, Expo CLI.
+
+### Start Postgres
 
 ```bash
-# Build
-npm run build
-
-# Test
-npm test
-
-# Lint
-npm run lint
+docker-compose up -d
 ```
 
-- ALWAYS run tests after making code changes
-- ALWAYS verify build succeeds before committing
-
-## Security Rules
-
-- NEVER hardcode API keys, secrets, or credentials in source files
-- NEVER commit .env files or any file containing secrets
-- Always validate user input at system boundaries
-- Always sanitize file paths to prevent directory traversal
-- Run `npx @claude-flow/cli@latest security scan` after security-related changes
-
-## Concurrency: 1 MESSAGE = ALL RELATED OPERATIONS
-
-- All operations MUST be concurrent/parallel in a single message
-- Use Claude Code's Agent tool for spawning agents, not just MCP
-- ALWAYS spawn ALL agents in ONE message with full instructions via Agent tool
-- ALWAYS batch ALL file reads/writes/edits in ONE message
-- ALWAYS batch ALL Bash commands in ONE message
-
-## Swarm Orchestration
-
-- MUST initialize the swarm using CLI tools when starting complex tasks
-- MUST spawn concurrent agents using Claude Code's Agent tool
-- Never use CLI tools alone for execution — Agent tool agents do the actual work
-- MUST call CLI tools AND Agent tool in ONE message for complex work
-
-### 3-Tier Model Routing (ADR-026)
-
-| Tier | Handler | Latency | Cost | Use Cases |
-|------|---------|---------|------|-----------|
-| **1** | Agent Booster (WASM) | <1ms | $0 | Simple transforms (var→const, add types) — Skip LLM |
-| **2** | Haiku | ~500ms | $0.0002 | Simple tasks, low complexity (<30%) |
-| **3** | Sonnet/Opus | 2-5s | $0.003-0.015 | Complex reasoning, architecture, security (>30%) |
-
-- For Tier 1 simple transforms, use Edit tool directly — no LLM agent needed
-
-## Swarm Configuration & Anti-Drift
-
-- ALWAYS use hierarchical topology for coding swarms
-- Keep maxAgents at 6-8 for tight coordination
-- Use specialized strategy for clear role boundaries
-- Use `raft` consensus for hive-mind (leader maintains authoritative state)
-- Run frequent checkpoints via `post-task` hooks
-- Keep shared memory namespace for all agents
+### Backend
 
 ```bash
-npx @claude-flow/cli@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized
+cd backend
+pip install -e ".[dev]"
+cp ../.env.example .env    # then set AI_PROVIDER and API keys
+python -m alembic upgrade head
+python -m app.seed          # optional: demo deck
+uvicorn app.main:app --reload
+# API: http://localhost:8000  Swagger: http://localhost:8000/docs
 ```
 
-## Swarm Execution Rules
-
-- ALWAYS use `run_in_background: true` for all Agent tool calls
-- ALWAYS put ALL Agent calls in ONE message for parallel execution
-- After spawning, STOP — do NOT add more tool calls or check status
-- Never poll agent status repeatedly — trust agents to return
-- When agent results arrive, review ALL results before proceeding
-
-## V3 CLI Commands
-
-### Core Commands
-
-| Command | Subcommands | Description |
-|---------|-------------|-------------|
-| `init` | 4 | Project initialization |
-| `agent` | 8 | Agent lifecycle management |
-| `swarm` | 6 | Multi-agent swarm coordination |
-| `memory` | 11 | AgentDB memory with HNSW search |
-| `task` | 6 | Task creation and lifecycle |
-| `session` | 7 | Session state management |
-| `hooks` | 17 | Self-learning hooks + 12 workers |
-| `hive-mind` | 6 | Byzantine fault-tolerant consensus |
-
-### Quick CLI Examples
+### Mobile
 
 ```bash
-npx @claude-flow/cli@latest init --wizard
-npx @claude-flow/cli@latest agent spawn -t coder --name my-coder
-npx @claude-flow/cli@latest swarm init --v3-mode
-npx @claude-flow/cli@latest memory search --query "authentication patterns"
-npx @claude-flow/cli@latest doctor --fix
+cd mobile
+npm install
+echo 'EXPO_PUBLIC_API_URL=http://localhost:8000' > .env
+npx expo start
 ```
 
-## Available Agents (16 Roles + Custom)
-
-### Core Development
-`coder`, `reviewer`, `tester`, `planner`, `researcher`
-
-### Specialized
-`security-architect`, `security-auditor`, `memory-specialist`, `performance-engineer`
-
-### Coordination
-`hierarchical-coordinator`, `mesh-coordinator`, `adaptive-coordinator`
-
-### GitHub & Repository
-`pr-manager`, `code-review-swarm`, `issue-tracker`, `release-manager`
-
-Any string can be used as a custom agent type — these are the typed roles with specialized behavior.
-
-## Memory & Vector Search
-
-### MCP Tools (use via ToolSearch to discover)
-
-| Tool | Description |
-|------|-------------|
-| `memory_store` | Store value with ONNX 384-dim vector embedding |
-| `memory_search` | Semantic vector search by query |
-| `memory_retrieve` | Get entry by key |
-| `memory_list` | List entries in namespace |
-| `memory_delete` | Delete entry |
-| `memory_import_claude` | Import Claude Code memories into AgentDB (allProjects=true for all) |
-| `memory_search_unified` | Search across ALL namespaces (Claude + AgentDB + patterns) |
-| `memory_bridge_status` | Show bridge health, vectors, SONA, intelligence |
-
-### CLI Commands
+### Running Tests
 
 ```bash
-# Store with vector embedding
-npx @claude-flow/cli@latest memory store --key "pattern-auth" --value "JWT with refresh" --namespace patterns
+# Unit tests (no DB needed) — scoring, scheduling, CSV import are pure functions
+cd backend
+pytest tests/test_scoring.py tests/test_scheduling.py tests/test_csv_import.py -v
 
-# Semantic search
-npx @claude-flow/cli@latest memory search --query "authentication patterns"
+# Integration tests (needs Postgres running + pimp_test database)
+psql -h localhost -U pimp -c "CREATE DATABASE pimp_test;"
+TEST_DATABASE_URL=postgresql+asyncpg://pimp:pimp@localhost:5432/pimp_test pytest tests/test_study_flow.py -v
 
-# Import all Claude Code memories into AgentDB
-node .claude/helpers/auto-memory-hook.mjs import-all
+# Run a single test
+pytest tests/test_scoring.py::test_name -v
 ```
 
-### Claude Code ↔ AgentDB Bridge
+### Test Infrastructure
 
-Claude Code auto-memory files (`~/.claude/projects/*/memory/*.md`) are automatically imported into AgentDB with ONNX vector embeddings on session start. Use `memory_search_unified` to search across both stores.
+Integration tests use a real Postgres database (not mocks). `conftest.py` overrides `get_db` and `get_ai_service` via FastAPI `dependency_overrides`. There's a `client_wrong_typed` fixture that injects `FakeAIService(typed_score=0)` for recognition-only gap scenarios. Tests use `httpx.AsyncClient` with `ASGITransport`. pytest-asyncio with `asyncio_mode = "auto"`.
 
-## Key MCP Tools (314 available — use ToolSearch to discover)
+## Key Design Decisions
 
-### Most Used Tools
+- **No real auth** — device ID is the user identity (MVP scope). `get_current_user` in `deps.py` auto-creates users.
+- **Recall integrity** — the three-phase study flow is the core product invariant. `NextQuestionOut` schema deliberately excludes answer fields. Test `test_recall_integrity` verifies this.
+- **Pure service functions** — scoring and scheduling have zero I/O, making them trivially testable.
+- **AI adapters are lazy-imported** — `factory.py` uses `@lru_cache(maxsize=1)` and deferred imports to avoid loading unused SDKs.
 
-| Category | Tools | What They Do |
-|----------|-------|-------------|
-| **Memory** | `memory_store`, `memory_search`, `memory_search_unified` | Store/search with ONNX vector embeddings |
-| **Claude Bridge** | `memory_import_claude`, `memory_bridge_status` | Import Claude memories into AgentDB |
-| **Swarm** | `swarm_init`, `swarm_status`, `swarm_health` | Multi-agent coordination |
-| **Agents** | `agent_spawn`, `agent_list`, `agent_status` | Agent lifecycle |
-| **Hive-Mind** | `hive-mind_init`, `hive-mind_spawn`, `hive-mind_consensus` | Byzantine/Raft consensus |
-| **Hooks** | `hooks_route`, `hooks_session-start`, `hooks_post-task` | Task routing + learning |
-| **Workers** | `hooks_worker-list`, `hooks_worker-dispatch` | 12 background workers |
-| **Security** | `aidefence_scan`, `aidefence_is_safe` | Prompt injection detection |
-| **Intelligence** | `hooks_intelligence`, `neural_status` | Pattern learning + SONA |
+## Environment Variables
 
-### Swarm Capabilities
+Backend reads from `backend/.env` via pydantic-settings. Key vars: `DATABASE_URL`, `AI_PROVIDER` (`fake` for dev/test), `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `PIMP_RUN_LIVE_AI` (set to 1 for live AI integration tests).
 
-- **Topologies**: hierarchical (anti-drift), mesh, ring, star, adaptive
-- **Consensus**: Raft (leader-based), Byzantine (PBFT), Gossip (eventual)
-- **Hive-Mind**: Queen-led coordination with spawn, broadcast, consensus voting, shared memory
-- **12 Background Workers**: audit, optimize, testgaps, map, deepdive, document, refactor, benchmark, ultralearn, consolidate, predict, preload
-
-### Memory Capabilities
-
-- **ONNX Embeddings**: all-MiniLM-L6-v2, 384 dimensions — real neural vectors
-- **DiskANN**: SSD-friendly vector search (8,000x faster insert than HNSW, perfect recall at 1K)
-- **sql.js**: Cross-platform SQLite (WASM, no native compilation)
-- **Claude Code Bridge**: Auto-imports MEMORY.md files into AgentDB on session start
-- **Unified Search**: `memory_search_unified` searches Claude memories + AgentDB + patterns
-- **SONA Learning**: Trajectory recording → pattern extraction → file persistence
-
-### How to Discover Tools
-
-Use ToolSearch to find specific tools:
-```
-ToolSearch("memory search")     → memory_store, memory_search, memory_search_unified
-ToolSearch("swarm")             → swarm_init, swarm_status, swarm_health, swarm_shutdown
-ToolSearch("hive consensus")    → hive-mind_consensus, hive-mind_status
-ToolSearch("+aidefence")        → aidefence_scan, aidefence_is_safe, aidefence_has_pii
-```
-
-## Quick Setup
-
-```bash
-claude mcp add claude-flow -- npx -y @claude-flow/cli@latest
-npx @claude-flow/cli@latest daemon start
-npx @claude-flow/cli@latest doctor --fix
-```
-
-## Claude Code vs MCP Tools
-
-- **Claude Code Agent tool** handles execution: agents, file ops, code generation, git
-- **MCP tools** (via ToolSearch) handle coordination: swarm, memory, hooks, routing, hive-mind
-- **CLI commands** (via Bash) are the same tools with terminal output
-- Use `ToolSearch("keyword")` to discover available MCP tools
-
-## Support
-
-- Documentation: https://github.com/ruvnet/ruflo
-- Issues: https://github.com/ruvnet/ruflo/issues
+Mobile reads `EXPO_PUBLIC_API_URL` from `mobile/.env`.
